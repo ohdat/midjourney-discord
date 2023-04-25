@@ -1,0 +1,62 @@
+name: dev
+
+env:
+  DOCKER_TAG: 1.1.${{ github.run_number }}
+  APP_NAME: ${{ github.event.repository.name }}
+  TAG: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:1.1.${{ github.run_number }}
+  REPO: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+  LATEST_TAG: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:latest
+
+on:
+  push:
+    branches:
+      - 'develop'
+
+jobs:
+
+  buildAndPush:
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v2
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    - name: Login to DockerHub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    - name: Build Docker image
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        platforms: linux/amd64
+        # platforms: linux/amd64,linux/arm64
+        tags: ${{ env.TAG }},${{ env.LATEST_TAG }}
+
+  deploy:
+    needs: buildAndPush
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: echo AWS_ACCESS_KEY_1ID ${{ env.aws.AWS_ACCESS_KEY_ID }}
+      - run: echo AWS_ACCESS_KEY_ID ${{ secrets.aws.AWS_ACCESS_KEY_ID }}
+      - name: AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: helm deploy
+        uses: ohdat/helm-eks-action@master
+        with:
+          command: |
+            aws eks update-kubeconfig --region us-east-1 --name ohdat-dev
+            helm repo add ohdat https://ohdat.github.io/helm-charts/
+            helm repo update
+            helm upgrade -i dev-${{ env.APP_NAME }} ohdat/command -n dev-xxjio-com --wait --set image.repository=${{ env.TAG }} --set resources=null --set "config.name=midwrapper","config.path=.env","config.key=.env"
