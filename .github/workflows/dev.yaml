@@ -8,6 +8,7 @@ env:
   LATEST_TAG: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:latest
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - 'develop'
